@@ -21,6 +21,9 @@
 #include <map>
 #include <set>
 
+#include <cuda_runtime.h>
+#include "helper_cuda.h"
+
 #define CHECK_GE(x,y) ((x)>=(y)?true:false) // x is greater or equal to y
 #define CHECK_GT(x,y) ((x)>=(y)?true:false) // x is greater than y
 #define CHECK_LE(x,y) ((x)<=(y)?true:false) // x is less or equal y
@@ -32,6 +35,8 @@ private: \
     classname& operator=(const classname&);
 
 const uint32_t kMaxTensorAxes = 32;
+enum BackEnd {CPU, GPU};
+enum CpyMode {HostToDevice, DeviceToHost};
 
 void Warning(const std::string &warning);
 

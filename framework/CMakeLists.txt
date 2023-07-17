@@ -10,6 +10,7 @@ SET(CMAKE_BUILD_TYPE Debug)  # enable debug symbols for gdb debugging
 SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g2 -ggdb") # 定义Debug编译参数
 
 SET(PROJ_HEAD ${PROJECT_SOURCE_DIR}/include)
+SET(CUDA_HEAD "/usr/local/cuda-11.4/targets/x86_64-linux/include/")
 
 FILE(GLOB_RECURSE EXE_SRC_FILES
     ${PROJECT_SOURCE_DIR}/src/main.cpp
@@ -25,7 +26,7 @@ FILE(GLOB_RECURSE PY_SRC_FILES
 #add_library(mytensor SHARED ${TENSOR})
 SET(LOG4CPP "/usr/local/lib/liblog4cplus.so")
 
-include_directories(${PROJ_HEAD})
+include_directories(${PROJ_HEAD} ${CUDA_HEAD})
 add_subdirectory("./third_part/pybind11")
 pybind11_add_module(libgfinfer ${PY_SRC_FILES})
 

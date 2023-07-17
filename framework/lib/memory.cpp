@@ -17,8 +17,8 @@ inline void Memory::GFMallocDevice(void **ptr, uint32_t size) {
 inline void Memory::GFMemCpy(void **host_ptr, 
                              void **device_ptr,
                              uint32_t size, 
-                             CpyMode &__cpmd) {
-    switch(__head) {
+                             CpyMode &cpy_mode) {
+    switch(cpy_mode) {
         case HostToDevice:
             checkCudaErrors(cudaMemcpy(device_ptr, host_ptr, 
                                        size*sizeof(float), 
@@ -29,7 +29,7 @@ inline void Memory::GFMemCpy(void **host_ptr,
                                        size*sizeof(float), 
                                        cudaMemcpyDeviceToHost));
             break;
-
+    }
 }
 
 } //namespace geefer

@@ -1,15 +1,15 @@
 #ifndef __OP_HPP__
 #define __OP_HPP__
 
-#include "tesor.hpp"
+#include "common.hpp"
 
 namespace geefer
 {
 
 template<typename DType>
-class OP{
-public:
-};
+void vec_add(DType *input1, DType *input2, 
+             DType *output, uint32_t size);
+
 
 } // namespace geefer
 #endif

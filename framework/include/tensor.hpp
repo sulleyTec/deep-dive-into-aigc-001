@@ -2,7 +2,7 @@
 #define __TENSOR_HPP__
 
 #include "syncmem.hpp"
-//#include "common.hpp"
+#include "op.hpp"
 
 // geefer for geek infer
 namespace geefer
@@ -11,23 +11,33 @@ namespace geefer
 template<typename DType>
 class Tensor {
 public:
-    Tensor(): _data(), _size(0ul), _capacity(0ul), _max_dim(4) {}
+    Tensor(): _data(), _size(0ul), _capacity(0ul), _max_dim(4), _backend(CPU) 
+    {}
+
     explicit Tensor(uint32_t num, uint32_t channels, 
-                    uint32_t width, uint32_t height): 
-        _capacity(0ul), _max_dim(4)  {
+                    uint32_t width, uint32_t height,
+                    BackEnd backend=CPU):
+        _capacity(0ul), _max_dim(4), _backend(backend)  {
         Reshape(num, channels, width, height);
     }
 
-    explicit Tensor(const std::vector<uint32_t> &shape): 
-        _capacity(0ul), _max_dim(4)  {
+    explicit Tensor(const std::vector<uint32_t> &shape,
+                    BackEnd backend=CPU):
+        _capacity(0ul), _max_dim(4), _backend(backend) {
         Reshape(shape);
     }
 
     /* user MUST make sure that shape is correspond to len of data */
-    explicit Tensor(DType* init_data, std::vector<uint32_t> &shape): 
-        _capacity(0ul), _max_dim(4)  {
+    explicit Tensor(DType* init_data, 
+                    std::vector<uint32_t> &shape, 
+                    BackEnd backend=CPU):
+        _capacity(0ul), _max_dim(4), _backend(backend) {
         Reshape(shape);
-        set_cpu_data(init_data);
+        if(_backend==CPU)
+            set_cpu_data(init_data);
+
+        if(_backend==GPU)
+            set_gpu_data(init_data);
     }
 
     void Reshape(uint32_t num, uint32_t channels, 
@@ -74,7 +84,7 @@ public:
          */
         if(_size > _capacity) {
             _capacity = _size;
-            _data.reset(new SyncMem(_capacity*sizeof(DType)));
+            _data.reset(new SyncMem(_size*sizeof(DType)));
         }
     }
 
@@ -451,6 +461,15 @@ public:
         return offset;
     }
 
+    void Gpu2Cpu() {
+        if(_backend==CPU) {
+            Warning("backend is cpu, do not need to sync to cpu");
+            return;
+        }
+
+        _data->sync_gpu2cpu();
+    }
+
     Tensor<DType> ElementWiseAdd(const Tensor<DType> &other) const {
         if(_shape!=other.shape()) {
             Warning("element wise mul shape does not match");
@@ -459,12 +478,21 @@ public:
 
         Tensor<DType> result(_shape);
 
-        DType* result_raw_data = result.mutable_cpu_data();
-        const DType* raw_data = cpu_data();
-        const DType* other_raw_data = other.cpu_data();
+        if(_backend==CPU) {
+            DType* result_raw_data = static_cast<DType*>(result.mutable_cpu_data());
+            const DType* raw_data = cpu_data();
+            const DType* other_raw_data = other.cpu_data();
 
-        for(uint32_t i=0; i<_size; ++i) {
-            result_raw_data[i] = raw_data[i]+other_raw_data[i];
+            for(uint32_t i=0; i<_size; ++i)
+                result_raw_data[i] = raw_data[i]+other_raw_data[i];
+        }
+
+        if(_backend==GPU) {
+            DType* result_raw_data = static_cast<DType*>(result.mutable_gpu_data());
+            const DType* raw_data = static_cast<const DType*>gpu_data();
+            const DType* other_raw_data = static_cast<const DType*>other.gpu_data();
+            vec_add(raw_data, other_raw_data, result_raw_data, _size);
+            result.Gpu2Cpu();
         }
 
         return result;
@@ -614,10 +642,21 @@ public:
     /*  */
     const DType* cpu_data() const {
         if(_data==nullptr) {
-            /*TODO*/
+            Warning("data is null");
+            exit(1);
         }
 
         return (const DType*)_data->cpu_data();
+    }
+
+    /*  */
+    const DType* gpu_data() const {
+        if(_data==nullptr) {
+            Warning("data is null");
+            exit(1);
+        }
+
+        return (const DType*)_data->gpu_data();
     }
 
     /*  */
@@ -655,6 +694,21 @@ public:
         return static_cast<DType*>(_data->mutable_cpu_data());
     }
     //void FromFlat(const TensorFlatT* flat, bool reshape=true);
+
+    void set_gpu_data(DType* data) {
+        if(_data==nullptr) {
+            /*TODO*/
+        }
+
+        // Make sure CPU and GPU sizes remain equal
+        uint32_t size = _size* sizeof(DType);
+        if (_data->size() != size) {
+          _data.reset(new SyncMem(size));
+        }
+
+        /* deep copy in syncmem for safe */
+        _data->set_gpu_data(static_cast<void*>(data), _size*(sizeof(DType)));
+    }
 
     /*  */
     void set_cpu_data(DType* data) {
@@ -869,6 +923,8 @@ protected:
     uint32_t _size; // the same as vector
     uint32_t _capacity; // the same as vector
     const uint32_t _max_dim;
+    BackEnd _backend;
+
     //DISABLE_COPY_AND_ASSIGN(Tensor);
 
 }; // class Tensor
