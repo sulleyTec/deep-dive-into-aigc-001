@@ -2,22 +2,22 @@
 
 namespace geefer {
 
-inline void Memory::GFMallocHost(void **ptr, uint32_t size) {
+void Memory::GFMallocHost(void **ptr, uint32_t size) {
     *ptr = malloc(size);
     if(*ptr == nullptr){
-        std::string w = "pointer is null, malloc failed";
-        Warning(w);
+        Warning("pointer is null, malloc failed");
+        exit(1);
     }
 }
 
-inline void Memory::GFMallocDevice(void **ptr, uint32_t size) {
+void Memory::GFMallocDevice(void **ptr, uint32_t size) {
     checkCudaErrors(cudaMalloc(ptr, size*sizeof(float)));
 }
 
-inline void Memory::GFMemCpy(void **host_ptr, 
-                             void **device_ptr,
-                             uint32_t size, 
-                             CpyMode &cpy_mode) {
+void Memory::GFMemCpy(void *host_ptr, 
+                      void *device_ptr,
+                      uint32_t size, 
+                      CpyMode cpy_mode) {
     switch(cpy_mode) {
         case HostToDevice:
             checkCudaErrors(cudaMemcpy(device_ptr, host_ptr, 
@@ -32,6 +32,6 @@ inline void Memory::GFMemCpy(void **host_ptr,
     }
 }
 
-} //namespace geefer
+} // namespace geefer
 
 

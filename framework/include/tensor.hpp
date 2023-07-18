@@ -40,6 +40,23 @@ public:
             set_gpu_data(init_data);
     }
 
+    /* copy construct */
+    Tensor(const Tensor<DType> &other):
+        _size(other._size),
+        _capacity(other._capacity),
+        _max_dim(4), _backend(other._backend) {
+
+        _shape = other.shape();
+        _size = other.size();
+        _capacity = _size;
+        _shape_data.reset(new SyncMem(_shape.size() * sizeof(uint32_t)));
+        _data.reset(new SyncMem(_capacity*sizeof(DType)));
+
+        CopyFrom(other);
+    }
+
+    //~Tensor() {}
+
     void Reshape(uint32_t num, uint32_t channels, 
                  uint32_t width, uint32_t height) {
         Reshape({num, channels, width, height});
@@ -163,7 +180,7 @@ public:
         }
 
         const DType* src_raw_data = cpu_data();
-        Tensor<DType> result({broadcast_num, _size});
+        Tensor<DType> result({broadcast_num, _size}, _backend);
 
         for(uint32_t i=0; i<broadcast_num; ++i) {
             for(uint32_t j=0; j<_size; ++j) {
@@ -173,6 +190,9 @@ public:
 
         result.Reshape(tmp_shape);
         result.Permute(perm);
+
+        if(_backend==GPU)
+            result.Cpu2Gpu();
 
         return result;
     }
@@ -312,7 +332,11 @@ public:
             exit(1);
         }
 
-        __cpy_raw_data(src.cpu_data(), src.size()*sizeof(DType));
+        //__cpy_raw_data(src.cpu_data(), src.size()*sizeof(DType));
+        set_cpu_data(src.cpu_data());
+
+        if(_backend==GPU) 
+            Cpu2Gpu();
 
         if(_shape!=src.shape() && reshape) {
             ReshapeLike(src);
@@ -470,13 +494,22 @@ public:
         _data->sync_gpu2cpu();
     }
 
+    void Cpu2Gpu() {
+        if(_backend==CPU) {
+            Warning("backend is cpu, do not need to sync to cpu");
+            return;
+        }
+
+        _data->sync_cpu2gpu();
+    }
+
     Tensor<DType> ElementWiseAdd(const Tensor<DType> &other) const {
         if(_shape!=other.shape()) {
             Warning("element wise mul shape does not match");
             exit(1);
         }
 
-        Tensor<DType> result(_shape);
+        Tensor<DType> result(_shape, _backend);
 
         if(_backend==CPU) {
             DType* result_raw_data = static_cast<DType*>(result.mutable_cpu_data());
@@ -489,8 +522,8 @@ public:
 
         if(_backend==GPU) {
             DType* result_raw_data = static_cast<DType*>(result.mutable_gpu_data());
-            const DType* raw_data = static_cast<const DType*>gpu_data();
-            const DType* other_raw_data = static_cast<const DType*>other.gpu_data();
+            const DType* raw_data = static_cast<const DType*>(gpu_data());
+            const DType* other_raw_data = static_cast<const DType*>(other.gpu_data());
             vec_add(raw_data, other_raw_data, result_raw_data, _size);
             result.Gpu2Cpu();
         }
@@ -594,7 +627,7 @@ public:
                 return other.ElementWiseDiv(BroadCast(other.shape()));
         }
 
-        return ElementWiseMul(other);
+        return ElementWiseDiv(other);
     }
 
     Tensor<DType> operator+(const Tensor<DType> &other) const { 
@@ -616,7 +649,7 @@ public:
                 return other.ElementWiseMinus(BroadCast(other.shape()));
         }
 
-        return ElementWiseAdd(other);
+        return ElementWiseMinus(other);
 
     }
 
@@ -685,6 +718,14 @@ public:
         return _data;
     }
 
+    DType* mutable_gpu_data() {
+        if(_data==nullptr) {
+            /*TODO*/
+        }
+
+        return static_cast<DType*>(_data->mutable_gpu_data());
+    }
+
     /*  */
     DType* mutable_cpu_data() {
         if(_data==nullptr) {
@@ -695,9 +736,10 @@ public:
     }
     //void FromFlat(const TensorFlatT* flat, bool reshape=true);
 
-    void set_gpu_data(DType* data) {
+    void set_gpu_data(const DType* data) {
         if(_data==nullptr) {
-            /*TODO*/
+            Warning("data is nullptr");
+            exit(1);
         }
 
         // Make sure CPU and GPU sizes remain equal
@@ -707,13 +749,14 @@ public:
         }
 
         /* deep copy in syncmem for safe */
-        _data->set_gpu_data(static_cast<void*>(data), _size*(sizeof(DType)));
+        _data->set_gpu_data(static_cast<const void*>(data), _size*(sizeof(DType)));
     }
 
     /*  */
-    void set_cpu_data(DType* data) {
+    void set_cpu_data(const DType* data) {
         if(_data==nullptr) {
-            /*TODO*/
+            Warning("data is nullptr");
+            exit(1);
         }
 
         // Make sure CPU and GPU sizes remain equal
@@ -723,7 +766,7 @@ public:
         }
 
         /* deep copy in syncmem for safe */
-        _data->set_cpu_data(static_cast<void*>(data), _size*(sizeof(DType)));
+        _data->set_cpu_data(static_cast<const void*>(data), _size*(sizeof(DType)));
     }
 
     /*  */
@@ -902,6 +945,7 @@ private:
         return *this;
     }
 
+    /*
     void __cpy_raw_data(const DType* src, uint32_t len) {
         DType* raw_data = mutable_cpu_data();
         uint32_t cpy_size = _size*sizeof(DType);
@@ -915,6 +959,7 @@ private:
             std::memcpy(raw_data, src, cpy_size);
         }
     }
+    */
 
 protected:
     std::shared_ptr<SyncMem> _data; // tensor data info

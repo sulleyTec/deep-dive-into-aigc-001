@@ -35,7 +35,7 @@ protected:
     }
 
 protected:
-    uint32_t _norm_idx;
+    int32_t _norm_idx;
     DType _init_gamma_val;
     DType _init_beta_val;
 
@@ -113,12 +113,10 @@ protected:
     }
 
     inline Tensor<DType> _mean(const Tensor<DType>& input) const {
-        //std::vector<int32_t> mean_axes = {_norm_idx};
         return input.Mean({_norm_idx});
     }
 
     inline Tensor<DType>_var(const Tensor<DType>& input) const {
-        //std::vector<int32_t> var_axes = {_norm_idx};
         return input.Var({_norm_idx});
     }
 

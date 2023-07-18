@@ -141,10 +141,10 @@ py::array_t<float> gf_element_wise_add(const py::array_t<float>& input1,
     }
 
     float* arr = static_cast<float*>(input_buf1.ptr);
-    geefer::Tensor<float> ta(arr, shape_a);
+    geefer::Tensor<float> ta(arr, shape_a, GPU);
 
     float* brr = static_cast<float*>(input_buf2.ptr);
-    geefer::Tensor<float> tb(brr, shape_b);
+    geefer::Tensor<float> tb(brr, shape_b, GPU);
 
     geefer::Tensor<float> m_res = ta+tb;
 

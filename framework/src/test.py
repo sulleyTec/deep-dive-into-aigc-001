@@ -202,6 +202,7 @@ def test_element_wise_mul():
     np.testing.assert_allclose(gf_result, numpy_result)
 
 def test_element_wise_add():
+    print('test_element_wise_add')
     arr = np.random.rand(4,2,3)
     brr = np.random.rand(1,3)
 
@@ -332,7 +333,7 @@ def test_test():
     #print(f'{torch_out.shape=}')
     #print(f'{numpy_out.shape=}')
 
-test_test()
-
+#test_test()
+test_element_wise_add()
 
 

@@ -1,46 +1,23 @@
 #ifndef __SYNCMEM__
 #define __SYNCMEM__
 
-#include "common.hpp"
+//#include "common.hpp"
 #include "memory.hpp"
 
 namespace geefer {
-
-/*
-inline void GFMallocHost(void **ptr, uint32_t size) {
-    *ptr = malloc(size);
-    if(*ptr == nullptr){
-        std::string w = "pointer is null, malloc failed";
-        Warning(w);
-    }
-}
-
-inline void GFFreeHost(void* ptr) { free(ptr); }
-
-inline void GFMallocDevice(void **ptr, uint32_t size) {
-    //cudaMalloc(ptr, size);
-    checkCudaErrors(cudaMalloc(ptr, size*sizeof(float)));
-}
-
-inline void GFMemCpy(void **ptr, uint32_t size) {
-    checkCudaErrors(cudaMalloc(ptr, size*sizeof(float)));
-
-inline void GFFreeDevice(void* ptr) { free(ptr); }
-*/
 
 class SyncMem
 {
 public:
     SyncMem();
-    explicit SyncMem(uint32_t size, 
-                     BackEnd backend=CPU);
+    explicit SyncMem(uint32_t size);
     ~SyncMem();
 
     const void* cpu_data();
     const void* gpu_data();
 
-    void set_cpu_data(void *data, uint32_t size);
-    void set_gpu_data(void *data);
+    void set_cpu_data(const void *data, uint32_t size);
+    void set_gpu_data(const void *data, uint32_t size);
 
     void* mutable_cpu_data();
     void* mutable_gpu_data();
@@ -54,9 +31,11 @@ public:
     //enum CpyMode {HostToDevice, DeviceToHost};
 
     SyncHead head() const {return __head;}
+    uint32_t size() const {return __cpu_size;}
     uint32_t cpu_size() const {return __cpu_size;}
     uint32_t gpu_size() const {return __gpu_size;}
     void sync_gpu2cpu();
+    void sync_cpu2gpu();
 
 private:
     void __to_cpu();
