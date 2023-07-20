@@ -11,11 +11,15 @@ class Normal
 {
 public:
     Normal() = default;
-    explicit Normal(uint32_t idx, const std::vector<uint32_t>& shape):
-        _norm_idx(idx), 
+    explicit Normal(const std::vector<uint32_t> &norm_shape, 
+                    const std::vector<uint32_t> &shape):
+        _norm_axes(norm_shape.size()),
         _init_gamma_val(static_cast<DType>(1.0)), 
         _init_beta_val(static_cast<DType>(0.0)),
-        _shape(shape)  {}
+        _shape(shape),
+        _norm_shape(norm_shape) {
+
+    }
 
     virtual ~Normal() {};
 
@@ -23,7 +27,8 @@ public:
 
 protected:
     virtual inline Tensor<DType> _mean(const Tensor<DType>& input) const =0;
-    virtual inline Tensor<DType> _var(const Tensor<DType>& input) const =0;
+    virtual inline Tensor<DType> _var(const Tensor<DType>& input, 
+                                      uint32_t correction=1) const =0;
     virtual inline Tensor<DType> _init_param(DType init_v)=0;
 
     inline void _init_gamma() {
@@ -35,7 +40,7 @@ protected:
     }
 
 protected:
-    int32_t _norm_idx;
+    std::vector<int32_t> _norm_axes;
     DType _init_gamma_val;
     DType _init_beta_val;
 
@@ -43,35 +48,10 @@ protected:
     Tensor<DType> _beta;
 
     std::vector<uint32_t> _shape;
+    std::vector<uint32_t> _norm_shape;
 
 }; // class Normal
 
-
-/* 4D input */
-/*
-template<typename DType>
-class BatchNorm: public Normal
-{
-public:
-    BatchNorm() = default;
-    explicit BatchNorm(const Tensor<DType> &input): 
-        Normal(1, input) {}
-
-    virtual inline void forward() {
-
-    }
-
-protected:
-    virtual inline void _mean() {
-
-    }
-
-    virtual inline void _var() {
-
-    }
-
-};
-*/
 
 /* 4D input */
 template<typename DType>
@@ -79,20 +59,44 @@ class LayerNorm: public Normal<DType>
 {
 public:
     LayerNorm() = default;
-    explicit LayerNorm(const std::vector<uint32_t> &shape):
-        Normal<DType>(3, shape) {
+    explicit LayerNorm(const std::vector<uint32_t> &norm_shape, 
+                       const std::vector<uint32_t> &shape):
+        Normal<DType>(norm_shape, shape) {
+            int32_t i=norm_shape.size()-1; 
+            int32_t j=shape.size()-1;
+
+            /* compare norm axes in reverse order */
+            for(; i>=0; --i) {
+                if(norm_shape[i] != shape[j]) {
+                    Warning("normalization shape is not correct");
+                    exit(1);
+                }
+                _norm_axes[i] = j--;
+            } // for loop
+
             _init_gamma();
             _init_beta();
         }
 
     Tensor<DType> forward(const Tensor<DType> &input) override {
-        const Tensor<DType> mean_vec = _mean(input);
-        const Tensor<DType> var_vec = _var(input);
+        Tensor<DType> mean_vec = _mean(input);
+        Tensor<DType> var_vec = _var(input, 0);
 
-        //const Tensor<DType> tmp = (input - mean_vec)/(var_vec.Sqrt());
-        //return tmp * _gamma + _beta;
+        std::vector<uint32_t> new_shape(input.axes_num()); 
 
-        return (input - mean_vec)/(var_vec.Sqrt())*_gamma+_beta;
+        for(uint32_t i=0; i<input.axes_num()-_norm_axes.size(); ++i) {
+            new_shape[i] = _shape[i];
+        }
+
+        for(uint32_t i=0; i<_norm_axes.size(); ++i) {
+            new_shape[_norm_axes[i]] = 1;
+        }
+
+        mean_vec.Reshape(new_shape);
+        var_vec.Reshape(new_shape);
+
+        return (input - mean_vec)/((var_vec+static_cast<DType>(1e-3)).Sqrt())*_gamma+_beta;
+        //return (input - mean_vec)/((var_vec+static_cast<DType>(1e-3)).Sqrt());
     }
 
 protected:
@@ -113,21 +117,22 @@ protected:
     }
 
     inline Tensor<DType> _mean(const Tensor<DType>& input) const {
-        return input.Mean({_norm_idx});
+        return input.Mean(_norm_axes);
     }
 
-    inline Tensor<DType>_var(const Tensor<DType>& input) const {
-        return input.Var({_norm_idx});
+    inline Tensor<DType>_var(const Tensor<DType>& input,
+                             uint32_t correction=1) const {
+        return input.Var(_norm_axes, correction);
     }
 
 protected:
-    using Normal<DType>::_norm_idx;
+    using Normal<DType>::_norm_axes;
     using Normal<DType>::_init_gamma_val;
     using Normal<DType>::_init_beta_val;
     using Normal<DType>::_gamma;
     using Normal<DType>::_beta;
     using Normal<DType>::_shape;
-
+    using Normal<DType>::_norm_shape;
 };
 
 }; // namespace geefer

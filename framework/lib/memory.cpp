@@ -21,12 +21,12 @@ void Memory::GFMemCpy(void *host_ptr,
     switch(cpy_mode) {
         case HostToDevice:
             checkCudaErrors(cudaMemcpy(device_ptr, host_ptr, 
-                                       size*sizeof(float), 
+                                       size,
                                        cudaMemcpyHostToDevice));
             break;
         case DeviceToHost:
             checkCudaErrors(cudaMemcpy(host_ptr, device_ptr, 
-                                       size*sizeof(float), 
+                                       size,
                                        cudaMemcpyDeviceToHost));
             break;
     }

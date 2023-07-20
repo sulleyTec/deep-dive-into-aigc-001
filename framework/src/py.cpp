@@ -5,12 +5,14 @@
 
 #include <string.h>
 #include <iostream>
+#include <string>
 #include "tensor.hpp"
 #include "normalization.hpp"
 
 namespace py = pybind11;
 
-py::array_t<float> gf_layernorm(const py::array_t<float>& input) {
+py::array_t<float> gf_layernorm(const py::array_t<float>& input,
+                                const std::vector<uint32_t> &norm_shape) {
 
     py::buffer_info input_buf = input.request();
     std::vector<uint32_t> shape(input_buf.ndim);
@@ -21,7 +23,7 @@ py::array_t<float> gf_layernorm(const py::array_t<float>& input) {
 
     float* arr = static_cast<float*>(input_buf.ptr);
     geefer::Tensor<float> ta(arr, shape);
-    geefer::LayerNorm<float> layernorm(ta.shape());
+    geefer::LayerNorm<float> layernorm(norm_shape, ta.shape());
     geefer::Tensor<float> m_res = layernorm.forward(ta);
 
     py::array_t<float> result_array(m_res.shape());
@@ -126,8 +128,36 @@ py::array_t<float> gf_element_wise_div(const py::array_t<float>& input1,
     return result_array;
 }
 
+py::array_t<float> gf_element_wise_add_scalar(const py::array_t<float>& input1,
+                                              const float input2) {
+
+    py::buffer_info input_buf1 = input1.request();
+
+    std::vector<uint32_t> shape_a(input_buf1.ndim);
+
+    for(uint32_t i=0; i<input_buf1.ndim; ++i) {
+        shape_a[i] = input_buf1.shape[i];
+    }
+
+    float* arr = static_cast<float*>(input_buf1.ptr);
+    geefer::Tensor<float> ta(arr, shape_a);
+
+    geefer::Tensor<float> m_res = ta+input2;
+
+    py::array_t<float> result_array(m_res.shape());
+    py::buffer_info result_buf_info = result_array.request();
+
+    float* result_data = static_cast<float*>(result_buf_info.ptr);
+    const float* m_data = m_res.cpu_data();
+
+    memcpy(result_data, m_data, m_res.size()*sizeof(float));
+
+    return result_array;
+}
+
 py::array_t<float> gf_element_wise_add(const py::array_t<float>& input1,
-                                       const py::array_t<float>& input2) {
+                                       const py::array_t<float>& input2,
+                                       BackEnd backend=CPU) {
 
     py::buffer_info input_buf1 = input1.request();
     py::buffer_info input_buf2 = input2.request();
@@ -141,10 +171,10 @@ py::array_t<float> gf_element_wise_add(const py::array_t<float>& input1,
     }
 
     float* arr = static_cast<float*>(input_buf1.ptr);
-    geefer::Tensor<float> ta(arr, shape_a, GPU);
+    geefer::Tensor<float> ta(arr, shape_a, backend);
 
     float* brr = static_cast<float*>(input_buf2.ptr);
-    geefer::Tensor<float> tb(brr, shape_b, GPU);
+    geefer::Tensor<float> tb(brr, shape_b, backend);
 
     geefer::Tensor<float> m_res = ta+tb;
 
@@ -241,6 +271,25 @@ py::array_t<float> gf_var(const std::vector<int32_t>& reduced_axes,
     memcpy(result_data, m_data, m_res.size()*sizeof(float));
 
     return result_array;
+}
+
+void gf_reshape(py::array_t<float>& input, 
+                const std::vector<uint32_t>& new_shape) {
+
+    py::buffer_info input_buf = input.request();
+    std::vector<uint32_t> shape_a(input_buf.ndim);
+
+    for(uint32_t i=0; i<input_buf.ndim; ++i)
+        shape_a[i] = input_buf.shape[i];
+
+    float* arr = static_cast<float*>(input_buf.ptr);
+    geefer::Tensor<float> ta(arr, shape_a);
+
+    ta.Reshape(new_shape);
+    std::cout << "reshape: " << ta.shape_string() << std::endl;
+    std::cout << "axes_num: " << ta.axes_num() << std::endl;
+
+    input.resize(ta.shape());
 }
 
 py::array_t<float> gf_mean(const std::vector<int32_t>& reduced_axes,
@@ -366,7 +415,6 @@ py::array_t<float> matrix_multiply(py::array_t<float> array1, py::array_t<float>
 py::array_t<float> gf_matrix_multiply(const py::array_t<float> array1, 
                                       const py::array_t<float> array2) {
 
-    std::cout << "gf_matrix_multiply" << std::endl;
     py::buffer_info buf_info1 = array1.request();
     py::buffer_info buf_info2 = array2.request();
 
@@ -392,6 +440,7 @@ py::array_t<float> gf_matrix_multiply(const py::array_t<float> array1,
     const float* tc_data = tc.cpu_data();
     uint32_t size = tc.size();
 
+    /*
     std::cout << "tc.shape=" << tc.shape_string() << std::endl;
     std::cout << "tc.size=" << size << std::endl;
     std::cout << "tc_data: " << std::endl;
@@ -399,6 +448,7 @@ py::array_t<float> gf_matrix_multiply(const py::array_t<float> array1,
         std::cout << tc_data[i] << ", ";
     }
     std::cout << std::endl;
+    */
 
     std::vector<uint32_t> result_shape = tc.shape();
     py::array_t<float> result_array(result_shape);
@@ -428,12 +478,18 @@ PYBIND11_MODULE(libgfinfer, m) {
 }*/
 
 PYBIND11_MODULE(libgfinfer, m) {
+    py::enum_<BackEnd>(m, "BackEnd")
+        .value("CPU", BackEnd::CPU)
+        .value("GPU", BackEnd::GPU)
+        .export_values();
     m.def("matrix_multiply", &gf_matrix_multiply);
     m.def("permute", &gf_permute);
+    m.def("reshape", &gf_reshape);
     m.def("mean", &gf_mean);
     m.def("var", &gf_var);
     m.def("broadcast", &gf_broadcast);
     m.def("element_wise_add", &gf_element_wise_add);
+    m.def("element_wise_add_scalar", &gf_element_wise_add_scalar);
     m.def("element_wise_minus", &gf_element_wise_minus);
     m.def("element_wise_mul", &gf_element_wise_mul);
     m.def("element_wise_div", &gf_element_wise_div);

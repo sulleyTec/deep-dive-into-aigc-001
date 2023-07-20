@@ -22,6 +22,28 @@ float* rand_gen(uint32_t len) {
     return float_arr;
 }
 
+void test_vec_add(BackEnd backend) {
+    uint32_t bs = 8ul;
+    uint32_t dim1 = 32ul;
+    uint32_t dim2 = 128ul;
+    uint32_t dim3 = 128ul;
+
+    uint32_t size_a = bs*dim1*dim2*dim3;
+    uint32_t size_b = dim2*dim3;
+
+    std::vector<uint32_t> shape_a = {bs, dim1, dim2, dim3};
+    std::vector<uint32_t> shape_b = {dim2, dim3};
+
+    float *arr = rand_gen(size_a);
+    float *brr = rand_gen(size_b);
+
+    geefer::Tensor<float> ta(arr, shape_a, backend);
+    geefer::Tensor<float> tb(brr, shape_b, backend);
+
+    geefer::Tensor<float> td = tb+ta;
+    std::cout << "element wise add:" << td.shape_string() << std::endl;
+}
+
 int main() {
 
     /*
@@ -115,23 +137,36 @@ int main() {
     std::cout << var.shape_string() << std::endl;
     */
 
+    /*
     uint32_t bs = 6ul;
     uint32_t dim1 = 3ul;
     uint32_t dim2 = 4ul;
     uint32_t dim3 = 5ul;
 
     uint32_t size_a = bs*dim1*dim2*dim3;
-    std::vector<uint32_t> shape_a = {bs, dim1, dim2, dim3};
+    std::vector<uint32_t> shape_a = {bs, dim1, dim2};
+    std::vector<uint32_t> shape_b = {bs, dim1, dim2, dim3};
     float *arr = rand_gen(size_a);
-    geefer::Tensor<float> ta(arr, shape_a, GPU);
+    //geefer::Tensor<float> ta(arr, shape_a, GPU);
+    geefer::Tensor<float> ta(arr, shape_a);
+    geefer::Tensor<float> tb(arr, shape_b);
 
-    uint32_t size_b = dim1*dim3;
-    std::vector<uint32_t> shape_b = {dim1, 1, dim3};
-    float *brr = rand_gen(size_b);
-    geefer::Tensor<float> tb(brr, shape_b, GPU);
+    std::vector<uint32_t> new_shape = {bs, dim1, dim2, 1};
+    ta.Reshape(new_shape);
+    std::cout << "ta.shape=: " << ta.shape_string() << std::endl;
+    std::cout << "tb.shape=: " << tb.shape_string() << std::endl;
 
-    geefer::Tensor<float> td = tb+ta;
-    std::cout << "element wise add:" << td.shape_string() << std::endl;
+    geefer::Tensor<float> tc = tb - ta;
+    std::cout << "minus: " << tc.shape_string() << std::endl;
+
+    //uint32_t size_b = dim1*dim3;
+    //std::vector<uint32_t> shape_b = {dim1, 1, dim3};
+    //float *brr = rand_gen(size_b);
+    //geefer::Tensor<float> tb(brr, shape_b, GPU);
+
+    //geefer::Tensor<float> td = tb+ta;
+    //std::cout << "element wise add:" << td.shape_string() << std::endl;
+    */
 
     /*
 
@@ -157,17 +192,26 @@ int main() {
     std::cout << "element wise sqrt:" << tf.shape_string() << std::endl;
     */
 
-
     /*
+    uint32_t bs = 20ul;
+    uint32_t dim1 = 5ul;
+    uint32_t dim2 = 20ul;
+    uint32_t dim3 = 10ul;
+
     uint32_t size_a = bs*dim1*dim2*dim3;
     std::vector<uint32_t> shape_a = {bs, dim1, dim2, dim3};
     float *arr = rand_gen(size_a);
     geefer::Tensor<float> ta(arr, shape_a);
 
-    geefer::LayerNorm<float> layernorm(ta.shape());
+    geefer::Tensor<float> result = ta+1e-3f;
+    std::cout << result.shape_string() << std::endl;
+
+    geefer::LayerNorm<float> layernorm({dim3}, ta.shape());
     geefer::Tensor<float> result = layernorm.forward(ta);
     std::cout << result.shape_string() << std::endl;
     */
+
+    test_vec_add(GPU);
 
     return 0;
 }

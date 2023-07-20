@@ -72,7 +72,7 @@ public:
         _size = 1ul;
         _shape.resize(shape.size());
 
-        /* */
+        /*  */
         if(!_shape_data.get() || _shape_data->size() < shape.size()*sizeof(uint32_t)){
             _shape_data.reset(new SyncMem(shape.size() * sizeof(uint32_t)));
         }
@@ -156,6 +156,7 @@ public:
         }
 
         std::vector<uint32_t> perm;
+        std::vector<uint32_t> reverse_perm(axes.size());
         std::vector<uint32_t> tmp_shape(axes.size());
         std::vector<uint32_t> broadcast_axes;
         std::vector<uint32_t> reserved_axes;
@@ -175,6 +176,10 @@ public:
         perm.insert(perm.end(),broadcast_axes.begin(),broadcast_axes.end());
         perm.insert(perm.end(),reserved_axes.begin(),reserved_axes.end());
 
+        for(uint32_t i=0; i<axes.size(); ++i) {
+            reverse_perm[perm[i]] = i;
+        }
+
         for(uint32_t i=0; i<tmp_shape.size(); ++i) {
             tmp_shape[i] = axes[perm[i]];
         }
@@ -189,7 +194,7 @@ public:
         }
 
         result.Reshape(tmp_shape);
-        result.Permute(perm);
+        result.Permute(reverse_perm);
 
         if(_backend==GPU)
             result.Cpu2Gpu();
@@ -505,7 +510,7 @@ public:
 
     Tensor<DType> ElementWiseAdd(const Tensor<DType> &other) const {
         if(_shape!=other.shape()) {
-            Warning("element wise mul shape does not match");
+            Warning("element wise add shape does not match");
             exit(1);
         }
 
@@ -600,6 +605,7 @@ public:
         _capacity = _size;
         _shape_data.reset(new SyncMem(_shape.size() * sizeof(uint32_t)));
         _data.reset(new SyncMem(_capacity*sizeof(DType)));
+        _backend = other._backend;
 
         CopyFrom(other);
 
@@ -609,10 +615,26 @@ public:
     Tensor<DType> operator*(const Tensor<DType> &other) const { 
 
         if(other.shape() != _shape) {
-            if(other.axes_num() <= axes_num())
+            if(other.axes_num() < axes_num())
                 return ElementWiseMul(other.BroadCast(_shape));
-            else
+            else if(other.axes_num() > axes_num())
                 return other.ElementWiseMul(BroadCast(other.shape()));
+            else {
+                bool bc_self = false;
+                for(uint32_t i=0; i<axes_num(); ++i) {
+                    if(other.shape(i) != _shape[i]) {
+                        if (_shape[i] == 1) {
+                            bc_self = true;
+                            break;
+                        }
+                    }
+                } // for
+
+                if(bc_self) 
+                    return ElementWiseMul(BroadCast(other.shape()));
+
+                return ElementWiseMul(other.BroadCast(_shape));
+            }
         }
 
         return ElementWiseMul(other);
@@ -621,10 +643,26 @@ public:
     Tensor<DType> operator/(const Tensor<DType> &other) const {
 
         if(other.shape() != _shape) {
-            if(other.axes_num() <= axes_num())
+            if(other.axes_num() < axes_num())
                 return ElementWiseDiv(other.BroadCast(_shape));
-            else
+            else if(other.axes_num() > axes_num())
                 return other.ElementWiseDiv(BroadCast(other.shape()));
+            else {
+                bool bc_self = false;
+                for(uint32_t i=0; i<axes_num(); ++i) {
+                    if(other.shape(i) != _shape[i]) {
+                        if (_shape[i] == 1) {
+                            bc_self = true;
+                            break;
+                        }
+                    }
+                } // for
+
+                if(bc_self) 
+                    return ElementWiseDiv(BroadCast(other.shape()));
+
+                return ElementWiseDiv(other.BroadCast(_shape));
+            }
         }
 
         return ElementWiseDiv(other);
@@ -632,21 +670,66 @@ public:
 
     Tensor<DType> operator+(const Tensor<DType> &other) const { 
         if(other.shape() != _shape) {
-            if(other.axes_num() <= axes_num())
+            if(other.axes_num() < axes_num())
                 return ElementWiseAdd(other.BroadCast(_shape));
-            else
+            else if(other.axes_num() > axes_num())
                 return other.ElementWiseAdd(BroadCast(other.shape()));
+            else {
+                bool bc_self = false;
+                for(uint32_t i=0; i<axes_num(); ++i) {
+                    if(other.shape(i) != _shape[i]) {
+                        if (_shape[i] == 1) {
+                            bc_self = true;
+                            break;
+                        }
+                    }
+                } // for
+
+                if(bc_self) 
+                    return ElementWiseAdd(BroadCast(other.shape()));
+
+                return ElementWiseAdd(other.BroadCast(_shape));
+            }
         }
 
         return ElementWiseAdd(other);
     }
 
+    /* add a scaler*/
+    Tensor<DType> operator+(const DType other) const { 
+        Tensor<DType> result(_shape, _backend);
+        const DType *raw_data = cpu_data();
+        DType *result_raw_data = result.mutable_cpu_data();
+
+        for(uint32_t i=0; i<_size; ++i) {
+            result_raw_data[i] = raw_data[i] + other;
+        }
+
+        return result;
+    }
+
     Tensor<DType> operator-(const Tensor<DType> &other) const { 
-        if(other.shape() != _shape) {
-            if(other.axes_num() <= axes_num())
+        if(other.shape() != _shape) { 
+            if(other.axes_num() < axes_num())
                 return ElementWiseMinus(other.BroadCast(_shape));
-            else
-                return other.ElementWiseMinus(BroadCast(other.shape()));
+            else if(other.axes_num() > axes_num())
+                return ElementWiseMinus(BroadCast(other.shape()));
+            else {
+                bool bc_self = false;
+                for(uint32_t i=0; i<axes_num(); ++i) {
+                    if(other.shape(i) != _shape[i]) {
+                        if (_shape[i] == 1) {
+                            bc_self = true;
+                            break;
+                        }
+                    }
+                } // for
+
+                if(bc_self) 
+                    return ElementWiseMinus(BroadCast(other.shape()));
+
+                return ElementWiseMinus(other.BroadCast(_shape));
+            }
         }
 
         return ElementWiseMinus(other);
@@ -749,7 +832,8 @@ public:
         }
 
         /* deep copy in syncmem for safe */
-        _data->set_gpu_data(static_cast<const void*>(data), _size*(sizeof(DType)));
+        _data->set_gpu_data(static_cast<const void*>(data), 
+                            _size*(sizeof(DType)));
     }
 
     /*  */
@@ -784,6 +868,7 @@ public:
             Warning("dim of input tensor is less than 2");
             exit(1);
         }
+
         uint32_t b_row = other.shape(-2);
         uint32_t b_col = other.shape(-1);
         uint32_t a_row = shape(-2);

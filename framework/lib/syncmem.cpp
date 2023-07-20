@@ -74,8 +74,14 @@ void SyncMem::__to_gpu() {
             }
 
             /* malloc gpu data */
-            if(!__own_gpu_data)
+            if(!__own_gpu_data) {
                 __mem->GFMallocDevice(&__device_ptr, __cpu_size);
+
+                if(__device_ptr==nullptr) {
+                    Warning("gpu data malloc failed");
+                    exit(1);
+                }
+            }
 
             /* sync cpu data to gpu */
             __mem->GFMemCpy(__host_ptr, 
