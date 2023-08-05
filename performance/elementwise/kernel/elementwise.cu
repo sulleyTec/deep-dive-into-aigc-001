@@ -368,7 +368,7 @@ public:
         return efficiency;
     }
 
-    float elementwise_mul_naive(const int grid_dim) {
+    float elementwise_add_naive(const int grid_dim) {
         float vec_add_time = 0.0f;
 
         cudaEventRecord(__start, __stream);
@@ -434,7 +434,7 @@ private:
         cudaMalloc((void **)&__output_device, __num_elements*sizeof(Dtype));
     }
 
-    float __calc_efficiency(float vec_mul_time,
+    float __calc_efficiency(float calc_time,
                           int grid_dim, int block_dim, 
                           bool show_info=false) {
 
@@ -444,12 +444,12 @@ private:
         float estimate_time = (inst_time+(float)data_amount/__band_width/1024/1024/1024)*1000;
         float theoretical_throughput = (float)__num_elements/estimate_time;
 
-        float throughput = (float)__num_elements/vec_mul_time;
+        float throughput = (float)__num_elements/calc_time;
         float throughput_eff = throughput/theoretical_throughput;
         if(show_info) {
-            printf("num_elements=%ld, grid_dim=%d, block_dim=%d, vec_mul_time=%fms, estimate_time=%fms, throughput=%f, theoretical_throughput=%f, throughput_eff=%f \n", 
+            printf("num_elements=%ld, grid_dim=%d, block_dim=%d, calc_time=%fms, estimate_time=%fms, throughput=%f, theoretical_throughput=%f, throughput_eff=%f \n", 
                __num_elements, grid_dim, block_dim,
-               vec_mul_time, estimate_time, 
+               calc_time, estimate_time, 
                throughput, theoretical_throughput, throughput_eff );
         }
 
@@ -504,6 +504,37 @@ std::pair<int, float>elementwise_mul_float_optimized(const int64_t num_elements,
     ElementWiseMul<float> mul(num_elements, iters, BAND_WIDTH);
     float eff = mul.elementwise_mul_optimized();
     int opt_grid_dim = mul.get_opt_grid_dim();
+
+    return std::make_pair(opt_grid_dim, eff);
+}
+
+float elementwise_add_half_naive(const int64_t num_elements, 
+                                 int iters, int grid_dim) {
+    ElementWiseMul<half> add(num_elements, iters, BAND_WIDTH);
+    return add.elementwise_add_naive(grid_dim);
+}
+
+float elementwise_add_float_naive(const int64_t num_elements,
+                                  int iters, int grid_dim) {
+    ElementWiseMul<float> add(num_elements, iters, BAND_WIDTH);
+    return add.elementwise_add_naive(grid_dim);
+}
+
+std::pair<int, float> elementwise_add_half_optimized(const int64_t num_elements,
+                                                     int iters) {
+    ElementWiseMul<half> add(num_elements, iters, BAND_WIDTH);
+    float eff = add.elementwise_add_optimized();
+    int opt_grid_dim = add.get_opt_grid_dim();
+
+    return std::make_pair(opt_grid_dim, eff);
+}
+
+
+std::pair<int, float>elementwise_add_float_optimized(const int64_t num_elements,
+                                                    int iters) {
+    ElementWiseMul<float> add(num_elements, iters, BAND_WIDTH);
+    float eff = add.elementwise_add_optimized();
+    int opt_grid_dim = add.get_opt_grid_dim();
 
     return std::make_pair(opt_grid_dim, eff);
 }
