@@ -87,18 +87,18 @@ class ElementWise:
         plt.grid()
 
         # Draw the 'opt' coordinate as text
-        opt_x, opt_y = opt
-        plt.text(0.95, 0.05, f"Optimal: ({opt_x}, {opt_y})", transform=plt.gca().transAxes,
+        x, y = opt
+        plt.text(0.95, 0.05, f"oneflow: ({x=}, {y=:.2f})", transform=plt.gca().transAxes,
                  horizontalalignment='right', verticalalignment='bottom', color='black')
 
         # Draw max x and y values as text
-        plt.text(0.95, 0.1, f"Max X: {max_x}", transform=plt.gca().transAxes,
+        plt.text(0.95, 0.1, f"{max_x=}", transform=plt.gca().transAxes,
                  horizontalalignment='right', verticalalignment='bottom', color='black')
-        plt.text(0.95, 0.15, f"Max Y: {max_y}", transform=plt.gca().transAxes,
+        plt.text(0.95, 0.15, f"{max_y=:.2f}", transform=plt.gca().transAxes,
                  horizontalalignment='right', verticalalignment='bottom', color='black')
 
         # Draw the 'num' value as text
-        plt.text(0.95, 0.2, f"Num: {num}", transform=plt.gca().transAxes,
+        plt.text(0.95, 0.2, f"#elements: {num}", transform=plt.gca().transAxes,
                  horizontalalignment='right', verticalalignment='bottom', color='black')
 
         # Save the image
@@ -106,107 +106,62 @@ class ElementWise:
         plt.close()
 
 
+num_elements_list = [163840*1000, 32*1024*1024]
 
-    '''
-    def draw_performance(self, points, opt, title, save_path, draw_opt=False):
-
-        # Extract x and y coordinates from points
-        x_coords = [point[0] for point in points]
-        y_coords = [point[1] for point in points]
-
-        # Extract x and y coordinates from opt point
-        opt_x = opt[0]
-        opt_y = opt[1]
-
-        # Create a scatter plot
-        plt.scatter(x_coords, y_coords, color='blue', marker='o', label='Scattered Points')
-        if draw_opt:
-            plt.scatter(opt_x, opt_y, color='green', marker='o', label='Opt Point')  # Plot opt point
-
-        # Draw lines between points
-        for i in range(len(points) - 1):
-            plt.plot([x_coords[i], x_coords[i + 1]], [y_coords[i], y_coords[i + 1]], color='red')
-
-        # Find the max x y values
-        y_max = max(y_coords)
-        x_max = x_coords[y_coords.index(y_max)]
-
-        # Draw max x and y values as text
-        plt.text(0.05, 0.95, f"Max X: {max_x}", transform=plt.gca().transAxes, color='black')
-        plt.text(0.05, 0.9, f"Max Y: {max_y}", transform=plt.gca().transAxes, color='black')
-
-        # Draw the 'num' value as text
-        plt.text(0.05, 0.85, f"Num: {num}", transform=plt.gca().transAxes, color='black')
-
-        # Draw the 'opt' coordinate as text
-        opt_x, opt_y = opt
-        plt.text(0.05, 0.8, f"Optimal: ({opt_x}, {opt_y})", transform=plt.gca().transAxes, color='black')
-
-        # Set plot title and labels
-        plt.title(title)
-        plt.xlabel('grid_dim')
-        plt.ylabel('efficiency')
-
-        # Display legend
-        #plt.legend()
-
-        # Save the plot as an image file
-        plt.savefig(save_path)
-        plt.close()
-    '''
-
-def test_elementwise_mul_half():
-    num_elements = 163840*1000
+def test_elementwise_mul_half(num_elements):
+    #num_elements = 163840*1000
     block_dim = 128
     grid_dim = 240
 
     ew = ElementWise(num_elements, grid_dim, block_dim)
 
-    title = 'half performance'
+    title = f'half performance with {str(num_elements)} elements'
     coordinate_list = ew.naive_half_mul(total_num=1500)
     opt = ew.optimized_half_mul()
     ew.draw_performance(num_elements, coordinate_list, 
-            opt, title, './half_mul_perf')
+            opt, title, f'./ew_mul_half_{str(num_elements)}')
 
-
-def test_elementwise_mul_float():
-    num_elements = 163840*1000
+def test_elementwise_mul_float(num_elements):
+    #num_elements = 163840*1000
     block_dim = 128
     grid_dim = 240
 
     ew = ElementWise(num_elements, grid_dim, block_dim)
 
-    title = 'float performance'
+    title = f'float performance with {str(num_elements)} elements'
     coordinate_list = ew.naive_float_mul(total_num=1500)
     opt = ew.optimized_float_mul()
-    ew.draw_performance(num_elements, coordinate_list, opt, title, 'float_mul_perf')
+    ew.draw_performance(num_elements, coordinate_list, 
+            opt, title, f'ew_mul_float_{str(num_elements)}')
 
-def test_elementwise_add_half():
-    num_elements = 163840*1000
+def test_elementwise_add_half(num_elements):
+    #num_elements = 163840*1000
     block_dim = 128
     grid_dim = 240
 
     ew = ElementWise(num_elements, grid_dim, block_dim)
 
-    title = 'half performance'
+    title = f'half performance with {str(num_elements)} elements'
     coordinate_list = ew.naive_half_add(total_num=1500)
     opt = ew.optimized_half_add()
-    ew.draw_performance(num_elements, coordinate_list, opt, title, './half_add_perf')
+    ew.draw_performance(num_elements, coordinate_list, 
+            opt, title, f'./ew_add_half_{str(num_elements)}')
 
-def test_elementwise_add_float():
-    num_elements = 163840*1000
+def test_elementwise_add_float(num_elements):
+    #num_elements = 163840*1000
     block_dim = 128
     grid_dim = 240
 
     ew = ElementWise(num_elements, grid_dim, block_dim)
 
-    title = 'float performance'
+    title = f'float performance with {str(num_elements)} elements'
     coordinate_list = ew.naive_float_add(total_num=1500)
     opt = ew.optimized_float_add()
-    ew.draw_performance(num_elements, coordinate_list, opt, title, 'float_add_perf')
+    ew.draw_performance(num_elements, coordinate_list, 
+            opt, title, f'ew_add_float_{str(num_elements)}')
 
-def test_draw():
-    num_elements = 163840*1000
+def test_draw(num_elements):
+    #num_elements = 163840*1000
     block_dim = 128
     grid_dim = 240
 
@@ -218,10 +173,11 @@ def test_draw():
     ew = ElementWise(num_elements, grid_dim, block_dim)
     ew.draw_performance(num_elements, points, opt, title, save_path)
 
-test_elementwise_mul_half()
-test_elementwise_mul_float()
-test_elementwise_add_half()
-test_elementwise_add_float()
+for n in num_elements_list:
+    test_elementwise_mul_half(n)
+    test_elementwise_mul_float(n)
+    test_elementwise_add_half(n)
+    test_elementwise_add_float(n)
 
 #test_draw()
 
