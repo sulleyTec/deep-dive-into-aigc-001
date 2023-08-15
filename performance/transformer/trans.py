@@ -15,9 +15,9 @@ class Attention(nn.Module):
 
         assert self.head_dim*num_heads==embed_dim, 'embed_dim must be divisable by num_heads'
 
-        self.values = nn.Linear(self.head_dim, self.head_dim, bias=False)
-        self.keys = nn.Linear(self.head_dim, self.head_dim, bias=False)
-        self.queries = nn.Linear(self.head_dim, self.head_dim, bias=False)
+        self.values = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
+        self.keys= nn.Linear(self.embed_dim, self.embed_dim, bias=False)
+        self.queries = nn.Linear(self.embed_dim, self.embed_dim, bias=False)
 
         self.fc = nn.Linear(self.head_dim*self.num_heads, self.embed_dim, bias=False)
 
@@ -47,15 +47,16 @@ class Attention(nn.Module):
 
         estimate_time = (inst_time + data_amount/band_width)*1000
 
+    ### input: (bs, seq_len, num_heads, head_dim)
     def mm_perf(self, bs, Q, K, V, mask):
 
-        ### Q.shape = (bs, num_heads, lq, head_dim)
+        ### Q.shape = (bs, num_heads, q_seq_len, head_dim)
         Q = Q.permute(0,2,1,3)
 
-        ### Q.shape = (bs, num_heads, head_dim, lk)
+        ### Q.shape = (bs, num_heads, head_dim, k_seq_len)
         K = K.permute(0,2,3,1)
 
-        ### energy.shape = (bs, num_heads, lq, lk)
+        ### energy.shape = (bs, num_heads, q_seq_len, k_seq_len)
         self.start_event.record()
         energy = torch.matmul(Q,K)
         self.end_event.record()
@@ -69,25 +70,31 @@ class Attention(nn.Module):
             energy = energy.masked_fill(mask==0, float('-1e20'))
 
         ### softmax operates on the 3rd dim which is the last dim, 
-        ### after this, every row of energy get normalized
-        ### attention.shape = (bs, num_heads, lq, lk)
+        ### after this, every row of energy get normalized by softmax
+        ### attention.shape = (bs, num_heads, q_seq_len, k_seq_len)
         attention = torch.softmax(energy/(self.embed_dim ** 0.5), dim=3)
 
-        ### V.shape   = (bs, lv, num_heads, head_dim)
-        ### attention.shape = (bs, num_heads, lq, lk=lv)
-        ### out.shape = (bs, lq, num_heads, head_dim)
-        ### lk == lv != lq
-        V = V.permute(0,2,1,3) # shape = (bs, num_heads, lv=lk, head_dim)
+        ### V.shape         = (bs, v_seq_len, num_heads, head_dim)
+        ### attention.shape = (bs, num_heads, q_seq_len, k_seq_len=v_seq_len)
+        ### k_seq_len == v_seq_len != q_seq_len
+
+        # shape = (bs, num_heads, v_seq_len=k_seq_len, head_dim)
+        V = V.permute(0,2,1,3) 
 
         self.start_event.record()
-        out = torch.matmul(attention, V) # shape = (bs, num_heads, lq, head_dim)
+        # out.shape = (bs, num_heads, q_seq_len, head_dim)
+        out = torch.matmul(attention, V) 
         self.end_event.record()
         torch.cuda.synchronize()
         elapsed_time_ms = self.start_event.elapsed_time(self.end_event)
         print(f'softmax mm time: {elapsed_time_ms}')
 
-        out = out.permute(0,2,1,3).contiguous() # shape = (bs, lq, num_heads, head_dim)
+        ### out.shape = Q.shape = (bs, q_seq_len, num_heads, head_dim)
+        out = out.permute(0,2,1,3).contiguous() 
+        ### out.shape = (bs, q_seq_len, embed_dim)
         out = out.view(bs, out.shape[1], -1)
+        ### (bs, q_seq_len, embed_dim) @ (embed_dim, embed_dim)
+        ### ---> (bs, q_seq_len, embed_dim) = input Q.shape
         out = self.fc(out)
 
         return out
@@ -131,18 +138,33 @@ class Attention(nn.Module):
 
         return out
 
+    ### input :
+    ### V.shape = (bs, seq_len, embed_dim)
     def forward(self, Q, K, V, mask, einsum=True):
 
-        bs = Q.shape[0]
+        bs, _, embed_dim = Q.shape
 
-        ### split Q,K,V into multi-heads
-        Q = Q.view(bs, -1, self.num_heads, self.head_dim)
-        K = K.view(bs, -1, self.num_heads, self.head_dim)
-        V = V.view(bs, -1, self.num_heads, self.head_dim)
+        ### generally k_seq_len and v_seq_len are not equal, 
+        ### k_seq_len and v_seq_len are the same
+        q_seq_len = Q.shape[1]
+        k_seq_len = K.shape[1]
+        v_seq_len = V.shape[1]
 
+        ### QKV MatrixMyl: 
+        Q = Q.view(-1, self.embed_dim)
+        K = K.view(-1, self.embed_dim)
+        V = V.view(-1, self.embed_dim)
+
+        ### (bs*seq_len, embed_dim) @ (embed_dim, embed_dim) 
+        ### --> (bs*seq_len, embed_dim)
         Q = self.queries(Q)
         K = self.keys(K)
         V = self.values(V)
+
+        ### split Q,K,V into multi-heads
+        Q = Q.reshape(bs, q_seq_len, self.num_heads, self.head_dim)
+        K = K.reshape(bs, k_seq_len, self.num_heads, self.head_dim)
+        V = V.reshape(bs, v_seq_len, self.num_heads, self.head_dim)
 
         if einsum:
             return self.mm_einsum(bs, Q, K, V, mask)
@@ -157,20 +179,28 @@ class TransformerBlock(nn.Module):
         self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
 
+        '''
         self.feed_forward = nn.Sequential(
                 nn.Linear(embed_dim, forward_expansion*embed_dim),
                 nn.ReLU(),
                 nn.Linear(forward_expansion*embed_dim, embed_dim),
                 )
+        '''
 
+        self.ff0 = nn.Linear(embed_dim, forward_expansion*embed_dim)
+        self.relu = nn.ReLU()
+        self.ff1 = nn.Linear(forward_expansion*embed_dim, embed_dim)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, Q, K, V, mask, einsum=True):
 
         attention = self.attention(Q,K,V,mask, einsum)
         x = self.dropout(self.norm1(attention+Q))
-        forward = self.feed_forward(x)
-        out = self.dropout(self.norm2(forward+x))
+        #forward = self.feed_forward(x)
+        y = self.ff0(x)
+        y = self.relu(y)
+        y = self.ff1(y)
+        out = self.dropout(self.norm2(x+y))
 
         return out
 
