@@ -24,12 +24,14 @@ class Attention(nn.Module):
     ###     3. __score_V_mul
     ###     4. __proj
 
-    def __init__(self, embed_dim=512, num_heads=12):
+    def __init__(self, embed_dim=512, num_heads=12, device='cuda'):
         super().__init__()
+
+        self.device = device
 
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        self.head_dim = embed_dim//num_heads
+        self.head_dim = (embed_dim//num_heads)
 
         assert self.head_dim*num_heads==embed_dim, \
                 'embed_dim must be divisable by num_heads'
@@ -86,6 +88,8 @@ class Attention(nn.Module):
     def __score_mul(self):
         self.start_event.record()
 
+        ### Q.shape = (bs, num_heads, q_seq_len, head_dim)
+        ### K.shape = (bs, num_heads, head_dim, k_seq_len)
         ### energy.shape = (bs, num_heads, q_seq_len, k_seq_len)
         self.energy = torch.matmul(self.Q, self.K)
 
@@ -102,13 +106,18 @@ class Attention(nn.Module):
 
     def __score_V_mul(self):
         self.start_event.record()
+
+        ### attention.shape=(bs, num_heads, q_seq_len, k_seq_len)
+        ### V.shape=(bs, num_heads, v_seq_len, head_dim)
+        ### out.shape=(bs, num_heads, q_seq_len, head_dim)
         self.out = torch.matmul(self.attention, self.V) 
-### record 
+
+        ### record 
         self.end_event.record()
         torch.cuda.synchronize()
         elapsed_time_ms = self.start_event.elapsed_time(self.end_event)
 
-        self.score_V_mul.MACs = 2*self.V.element_size()*self.bs*self.num_heads*\
+        self.score_V_mul.MACs = 2*self.bs*self.num_heads*\
                                 self.q_seq_len*self.v_seq_len*self.head_dim
         self.score_V_mul.Memory = self.V.element_size()* \
                 (self.attention.numel()+self.V.numel()+ self.out.numel())
@@ -156,7 +165,7 @@ class Attention(nn.Module):
         torch.cuda.synchronize()
         elapsed_time_ms = self.start_event.elapsed_time(self.end_event)
 
-        self.proj.MACs = self.bs*self.q_seq_len*self.embed_dim*self.embed_dim
+        self.proj.MACs = 2*self.bs*self.q_seq_len*self.embed_dim*self.embed_dim
         self.proj.Memory = self.Q.element_size()* \
                 (out_pre_numel+self.out.numel()+self.embed_dim**2)
         self.proj.Time = elapsed_time_ms
@@ -250,18 +259,22 @@ class Attention(nn.Module):
 
         ### generally k_seq_len and v_seq_len are not equal, 
         ### k_seq_len and v_seq_len are the same
-        self.Q = self.queries(self.Q)
-        self.K = self.keys(self.K)
-        self.V = self.values(self.V)
+        ### Q.shape = (bs, seq_len, embed_dim)
+        self.Q = self.queries(self.Q).to(self.device)
+        self.K = self.keys(self.K).to(self.device)
+        self.V = self.values(self.V).to(self.device)
 
         ### record 
         self.end_event.record()
         torch.cuda.synchronize()
         elapsed_time_ms = self.start_event.elapsed_time(self.end_event)
 
-        self.qkv_gemm.MACs = self.bs*\
+        self.qkv_gemm.MACs = 2*self.bs*\
                              (self.q_seq_len+self.k_seq_len+self.v_seq_len)*\
-                             self.embed_dim*self.embed_dim*self.embed_dim
+                             self.embed_dim*self.embed_dim
+        ### only calc one gemm
+        #self.qkv_gemm.MACs = 2*self.bs*self.q_seq_len*\
+        #                     self.embed_dim*self.embed_dim
 
         self.qkv_gemm.Memory = self.V.element_size()*\
                 (pre_Q_numel+pre_K_numel+pre_V_numel+\
@@ -294,9 +307,9 @@ class Attention(nn.Module):
     ### V.shape = (bs, seq_len, embed_dim)
     def forward(self, Q, K, V, mask, einsum=True):
 
-        self.Q = Q
-        self.K = K
-        self.V = V
+        self.Q = Q.to(self.device)
+        self.K = K.to(self.device)
+        self.V = V.to(self.device)
 
         self.bs, _, self.embed_dim = Q.shape
 
@@ -328,9 +341,14 @@ class TransformerBlock(nn.Module):
     ###     1. __FF0
     ###     2. __FF1
 
-    def __init__(self, embed_dim, num_heads, dropout, forward_expansion):
+    def __init__(self, embed_dim, 
+                 num_heads, 
+                 dropout, 
+                 forward_expansion,
+                 device='cuda'):
         super().__init__()
 
+        self.device = device
         self.forward_expansion = forward_expansion
         self.embed_dim = embed_dim
 
@@ -369,7 +387,7 @@ class TransformerBlock(nn.Module):
         torch.cuda.synchronize()
         elapsed_time_ms = self.start_event.elapsed_time(self.end_event)
 
-        self.FF0.MACs = self.attention.bs* \
+        self.FF0.MACs = 2*self.attention.bs* \
                         self.attention.q_seq_len*self.forward_expansion* \
                         self.embed_dim*self.embed_dim
         self.FF0.Memory = x.element_size()*(x.numel() + \
@@ -389,7 +407,7 @@ class TransformerBlock(nn.Module):
         torch.cuda.synchronize()
         elapsed_time_ms = self.start_event.elapsed_time(self.end_event)
 
-        self.FF1.MACs = self.attention.bs* \
+        self.FF1.MACs = 2*self.attention.bs* \
                         self.attention.q_seq_len*self.forward_expansion* \
                         self.embed_dim*self.embed_dim
         self.FF1.Memory = x.element_size()*(x.numel() + \
@@ -436,8 +454,8 @@ class TransformerBlock(nn.Module):
 
         attention = self.attention(Q,K,V,mask, einsum)
 
-        x = self.__NormAdd(attention, Q, 1)
-        y = self.__FF0(x)
+        x = self.__NormAdd(attention, Q, 1).to(self.device)
+        y = self.__FF0(x).to(self.device)
         y = self.__ReLU(y)
         y = self.__FF1(y)
         x = self.__NormAdd(x, y, 2)
@@ -612,6 +630,7 @@ class Transformer(nn.Module):
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'{device=}')
 
     x = torch.tensor([[1, 5, 6, 4, 3, 9, 5, 2, 0], [1, 8, 7, 3, 4, 5, 6, 7, 2]]).to(device)
     trg = torch.tensor([[1, 7, 4, 3, 5, 9, 2, 0], [1, 5, 6, 2, 4, 7, 6, 2]]).to(device)
