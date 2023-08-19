@@ -120,8 +120,10 @@ def scale_of_time(calc_Time, scale_save_path, mode):
 def performance(start, end, 
                 MACs_title,
                 Time_title,
+                Memory_title,
                 MACs_save_path,
                 Time_save_path,
+                Mem_save_path,
                 scale_save_path,
                 mode):
 
@@ -284,8 +286,14 @@ def performance(start, end,
                           x_coord=x_coord,
                           mode=mode)
 
-if __name__ == '__main__':
+    plot_arrays_of_points(memory_perf, 
+                          title=Memory_title,
+                          xy_name=['seq len', 'memory'], 
+                          save_path=Mem_save_path,
+                          x_coord=x_coord,
+                          mode=mode)
 
+if __name__ == '__main__':
 
     #seq_len_start = 128
     #embed_dim_start = 128
@@ -301,8 +309,10 @@ if __name__ == '__main__':
                 end=max_seq_len, 
                 MACs_title=f'Calc Op MACs: seq_len from {seq_len_start} to {max_seq_len}', 
                 Time_title=f'Calc Op Time: seq_len from {seq_len_start} to {max_seq_len}', 
+                Memory_title=f'Memory Op: seq_len from {seq_len_start} to {max_seq_len}', 
                 MACs_save_path='seq_MACs.png',
                 Time_save_path='seq_Time.png',
+                Mem_save_path='seq_len_Mem.png',
                 scale_save_path='seq_scale.png',
                 mode='seq')
 
@@ -310,8 +320,10 @@ if __name__ == '__main__':
                 end=max_embed_dim, 
                 MACs_title=f'Calc Op MACs: embeded_dim from {embed_dim_start} to {max_embed_dim}', 
                 Time_title=f'Calc Op Time: embeded_dim from {embed_dim_start} to {max_embed_dim}', 
+                Memory_title=f'Memory Op: embed_dim from {embed_dim_start} to {max_embed_dim}', 
                 MACs_save_path='embed_dim_MACs.png',
                 Time_save_path='embed_dim_Time.png',
+                Mem_save_path='embed_dim_Mem.png',
                 scale_save_path='embed_dim_scale.png',
                 mode='embed_dim')
 
