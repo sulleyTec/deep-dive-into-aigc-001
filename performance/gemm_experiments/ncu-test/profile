@@ -1,0 +1,1 @@
+sudo ncu -o gemm_b32 --set full --target-processes all --replay-mode application --cache-control none --clock-control none /home/raymond/workspace/my_git/cuda/deep-dive-into-aigc-001/performance/gemm_experiments/build/test
